@@ -10,19 +10,31 @@ GH_USER=
 GH_API="https://api.github.com"
 WORK_DIR="./working_dir"
 
+function push_branches() {
+	MAKE_GL_REPO=$(curl -XPOST -H "Private-Token: $GL_TOKEN" "$GL_API/projects?name=$2")
+	GIT_BRANCHES=$(git show-branch --all --list \
+		| grep "origin/" \
+		| sed '/HEAD/d;s|origin/||' \
+		| cut -d'[' -f2 \
+		| cut -d']' -f1)
+	unset  IFS
+	git remote set-url origin "$1"
+	for branch in $GIT_BRANCHES; do
+		git checkout $branch
+		git push origin $branch
+	done
+}
 function handle_gh_url() {
 	echo "Repo: $2"
 	GL_URL="https://gitlab.com/$GL_USER/$2.git"
 	echo "  - Cloning..."
 	git clone "$1" > /dev/null 2>&1
 	cd "$2"
-	git remote set-url origin $GL_URL
-	MAKE_GL_REPO=$(curl -XPOST -H "Private-Token: $GL_TOKEN" "$GL_API/projects?name=$2")
 	GL_PUSH="y"
 	if [[ "$MAKE_GL_REPO" =~ "has already been taken" ]]; then
 		read -n1 -p "  - Repo name in use, attempt push anyway [yN]?" GL_PUSH
 	fi
-	[[ "$GL_PUSH" =~ [Yy] ]] &&	git push origin master
+	[[ "$GL_PUSH" =~ [Yy] ]] &&	push_branches "$GL_URL"
 	cd ..
 	rm -rf "$2"
 }
@@ -47,8 +59,9 @@ function get_gl_repo() {
 	while read -r -u4 url; read -r -u5 dir; do
 		handle_gh_url  "$url" "$dir" 
 	done 4<<<"$GH_URLS" 5<<<"$GH_DIRS"
-	rm $GL_CREDS
 	git config --global credential.helper "$OLD_HELPER"
+	rm $GL_CREDS
+	rm -r $WORK_DIR
 }
 function gl_auth() {
 	[[ $GL_USER ]] || read -p "Gitlab username: " GL_USER
